@@ -1,13 +1,5 @@
 from collections import UserDict
-from datetime import datetime
-
-def input_error(func):
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except (KeyError, ValueError, IndexError) as e:
-            return f"Error: {str(e)}"
-    return wrapper
+from datetime import datetime, timedelta
 
 class Field:
     def __init__(self, value):
@@ -63,8 +55,8 @@ class AddressBook(UserDict):
     def add_record(self, record):
         self.data[record.name.value] = record
 
-    def find(self, name):
-        return self.data.get(name)
+    def __iter__(self):
+        return iter(self.data.values())
 
     def get_upcoming_birthdays(self, days=7):
         today = datetime.today().date()
@@ -84,59 +76,131 @@ class AddressBook(UserDict):
 
         return upcoming_birthdays
 
-    def __iter__(self):
-        return iter(self.data.values())
+def input_error(func):
+    def inner(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (KeyError, ValueError, IndexError) as e:
+            if isinstance(e, KeyError):
+                return "This contact does not exist."
+            elif isinstance(e, ValueError):
+                return "Give me name and phone please."
+            elif isinstance(e, IndexError):
+                return "Enter user name."
+    return inner
+
+@input_error
+def add_contact(args, book):
+    if len(args) < 2:
+        raise ValueError
+    name, phone = args[0], args[1]
+    if name in book.data:
+        book.data[name].add_phone(phone)
+    else:
+        record = Record(name)
+        record.add_phone(phone)
+        book.add_record(record)
+    return f"Contact {name} added with phone number {phone}."
+
+@input_error
+def change_contact(args, book):
+    if len(args) < 3:
+        raise ValueError
+    name, old_phone, new_phone = args[0], args[1], args[2]
+    record = book.data.get(name)
+    if record:
+        record.edit_phone(old_phone, new_phone)
+        return f"Phone number for {name} updated to {new_phone}."
+    else:
+        raise KeyError
+
+@input_error
+def show_phone(args, book):
+    if not args:
+        raise IndexError
+    name = args[0]
+    record = book.data.get(name)
+    if record:
+        phones = ', '.join(str(phone) for phone in record.phones)
+        return f"{name}'s phone numbers are: {phones}."
+    else:
+        raise KeyError
+
+@input_error
+def show_all_contacts(_, book):
+    if book.data:
+        return "\n".join(str(record) for record in book)
+    else:
+        return "No contacts available."
 
 @input_error
 def add_birthday(args, book):
-    name, date = args
-    record = book.find(name)
+    if len(args) < 2:
+        raise ValueError("Provide name and birthday in format YYYY.MM.DD")
+    name, birthday = args[0], args[1]
+    record = book.data.get(name)
     if record:
-        record.add_birthday(date)
-        return f"Added birthday {date} for {name}."
-    return "Contact not found."
+        record.add_birthday(birthday)
+        return f"Birthday for {name} added: {birthday}"
+    else:
+        raise KeyError
 
 @input_error
 def show_birthday(args, book):
+    if not args:
+        raise IndexError
     name = args[0]
-    record = book.find(name)
+    record = book.data.get(name)
     if record and record.birthday:
         return f"{name}'s birthday is on {record.birthday.value.strftime('%Y.%m.%d')}."
-    return "Contact or birthday not found."
+    elif record:
+        return f"No birthday set for {name}."
+    else:
+        raise KeyError
 
 @input_error
 def birthdays(args, book):
-    days = int(args[0])
-    upcoming_birthdays = book.get_upcoming_birthdays(days)
+    upcoming_birthdays = book.get_upcoming_birthdays()
     if upcoming_birthdays:
-        return "\n".join([f"{item['name']}: {item['birthday']}" for item in upcoming_birthdays])
-    return "No upcoming birthdays."
+        return "Upcoming birthdays:\n" + "\n".join(f"{entry['name']}: {entry['birthday']}" for entry in upcoming_birthdays)
+    else:
+        return "No birthdays in the upcoming week."
+
+def parse_input(user_input):
+    tokens = user_input.strip().split()
+    cmd = tokens[0].lower() if tokens else ""
+    args = tokens[1:]
+    return cmd, args
+
+def main():
+    book = AddressBook()
+    print("Welcome to the assistant bot!")
+    while True:
+        user_input = input("Enter a command: ")
+        command, args = parse_input(user_input)
+
+        if command in ["close", "exit"]:
+            print("Good bye!")
+            break
+        elif command == "hello":
+            print("How can I help you?")
+        elif command == "add":
+            print(add_contact(args, book))
+        elif command == "change":
+            print(change_contact(args, book))
+        elif command == "phone":
+            print(show_phone(args, book))
+        elif command == "all":
+            print(show_all_contacts(args, book))
+        elif command == "add-birthday":
+            print(add_birthday(args, book))
+        elif command == "show-birthday":
+            print(show_birthday(args, book))
+        elif command == "birthdays":
+            print(birthdays(args, book))
+        else:
+            print("Invalid command.")
 
 if __name__ == "__main__":
-    book = AddressBook()
+    main()
 
-    users = [
-        {"name": "John Doe", "birthday": "1985.08.07", "phones": ["1234567890", "5555555555"]},
-        {"name": "Jane Smith", "birthday": "1990.08.10", "phones": ["9876543210"]}
-    ]
-
-    for user in users:
-        record = Record(user["name"])
-        record.add_birthday(user["birthday"])
-        for phone in user.get("phones", []):
-            record.add_phone(phone)
-        book.add_record(record)
-
-    for record in book:
-        print(record)
-
-    upcoming_birthdays = book.get_upcoming_birthdays()
-    print("Список привітань на цьому тижні:")
-    for birthday in upcoming_birthdays:
-        print(birthday)
-
-    print(add_birthday(["John Doe", "1985.08.07"], book))
-
-    print(show_birthday(["John Doe"], book))
-
-    print(birthdays(["7"], book))

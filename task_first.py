@@ -43,9 +43,6 @@ class Record:
                 self.phones[idx] = Phone(new_phone)
                 return
 
-    def add_birthday(self, birthday):
-        self.birthday = Birthday(birthday)
-
     def __str__(self):
         phones = ', '.join(str(phone) for phone in self.phones)
         birthday = self.birthday if self.birthday else "No birthday"
@@ -55,47 +52,92 @@ class AddressBook(UserDict):
     def add_record(self, record):
         self.data[record.name.value] = record
 
-    def get_upcoming_birthdays(self, days=7):
-        today = datetime.today().date()
-        upcoming_birthdays = []
-
-        for record in self.data.values():
-            if record.birthday:
-                birthday_this_year = record.birthday.value.replace(year=today.year)
-                if birthday_this_year < today:
-                    birthday_this_year = birthday_this_year.replace(year=today.year + 1)
-                days_until_birthday = (birthday_this_year - today).days
-                if 0 <= days_until_birthday <= days:
-                    upcoming_birthdays.append({
-                        "name": record.name.value,
-                        "birthday": birthday_this_year.strftime("%Y.%m.%d")
-                    })
-
-        return upcoming_birthdays
-
     def __iter__(self):
         return iter(self.data.values())
 
-if __name__ == "__main__":
+# Decorator to handle errors
+def input_error(func):
+    def inner(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (KeyError, ValueError, IndexError) as e:
+            if isinstance(e, KeyError):
+                return "This contact does not exist."
+            elif isinstance(e, ValueError):
+                return "Give me name and phone please."
+            elif isinstance(e, IndexError):
+                return "Enter user name."
+    return inner
+
+@input_error
+def add_contact(args, book):
+    if len(args) < 2:
+        raise ValueError
+    name, phone = args[0], args[1]
+    record = Record(name)
+    record.add_phone(phone)
+    book.add_record(record)
+    return f"Contact {name} added with phone number {phone}."
+
+@input_error
+def change_contact(args, book):
+    if len(args) < 3:
+        raise ValueError
+    name, old_phone, new_phone = args[0], args[1], args[2]
+    record = book.data.get(name)
+    if record:
+        record.edit_phone(old_phone, new_phone)
+        return f"Phone number for {name} updated to {new_phone}."
+    else:
+        raise KeyError
+
+@input_error
+def show_phone(args, book):
+    if not args:
+        raise IndexError
+    name = args[0]
+    record = book.data.get(name)
+    if record:
+        phones = ', '.join(str(phone) for phone in record.phones)
+        return f"{name}'s phone numbers are: {phones}."
+    else:
+        raise KeyError
+
+@input_error
+def show_all_contacts(_, book):
+    if book.data:
+        return "\n".join(str(record) for record in book)
+    else:
+        return "No contacts available."
+
+def parse_input(user_input):
+    tokens = user_input.strip().split()
+    cmd = tokens[0].lower() if tokens else ""
+    args = tokens[1:]
+    return cmd, args
+
+def main():
     book = AddressBook()
+    print("Welcome to the assistant bot!")
+    while True:
+        user_input = input("Enter a command: ")
+        command, args = parse_input(user_input)
 
-    users = [
-        {"name": "John Doe", "birthday": "1985.08.07", "phones": ["1234567890", "5555555555"]},
-        {"name": "Jane Smith", "birthday": "1990.08.10", "phones": ["9876543210"]}
-    ]
+        if command in ["close", "exit"]:
+            print("Good bye!")
+            break
+        elif command == "hello":
+            print("How can I help you?")
+        elif command == "add":
+            print(add_contact(args, book))
+        elif command == "change":
+            print(change_contact(args, book))
+        elif command == "phone":
+            print(show_phone(args, book))
+        elif command == "show":
+            print(show_all_contacts(args, book))
+        else:
+            print("Invalid command.")
 
-    for user in users:
-        record = Record(user["name"])
-        record.add_birthday(user["birthday"])
-        for phone in user.get("phones", []):
-            record.add_phone(phone)
-        book.add_record(record)
-
-    for record in book:
-        print(record)
-
-    upcoming_birthdays = book.get_upcoming_birthdays()
-    print("Список привітань на цьому тижні:")
-    for birthday in upcoming_birthdays:
-        print(birthday)
-
+if __name__ == "__main__":
+    main()
